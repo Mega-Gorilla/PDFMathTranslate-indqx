@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import os
+
 import pymupdf
 import pymupdf4llm
 
@@ -35,19 +37,33 @@ def export_markdown(
     assets_dir: Optional[Path] = None
     image_path = output_dir
 
+    assets_rel = None
+    image_dir_token = None
+    output_dir_abs = output_dir.resolve()
+    assets_dir = None
     if write_images:
         assets_dir = output_dir / f"{base_name}_assets"
+        assets_rel = Path(os.path.relpath(assets_dir.resolve(), output_dir_abs))
+        image_dir_token = assets_dir.as_posix()
         assets_dir.mkdir(parents=True, exist_ok=True)
         image_path = assets_dir
 
+    safe_pdf_name = f"{base_name.replace(' ', '-')}.pdf"
+
     markdown_text = pymupdf4llm.to_markdown(
         doc,
-        filename=f"{base_name}.pdf",
+        filename=safe_pdf_name,
         write_images=write_images,
         embed_images=embed_images,
         image_path=str(image_path),
         pages=pages,
     )
+
+    if write_images and assets_rel and image_dir_token:
+        markdown_text = markdown_text.replace(
+            image_dir_token,
+            assets_rel.as_posix(),
+        )
 
     md_path = output_dir / f"{base_name}.md"
     md_path.write_text(markdown_text, encoding="utf-8")
