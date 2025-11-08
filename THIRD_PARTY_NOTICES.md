@@ -1,6 +1,6 @@
-# Third-Party Licenses
+# Third-Party Notices
 
-This project is distributed under the terms of the GNU Affero General Public License v3.0 (AGPLv3). The dependencies listed below are also AGPLv3 and require the same attribution/redistribution obligations. Refer to their upstream repositories for the authoritative texts.
+This project is distributed under the terms of the GNU Affero General Public License v3.0 (AGPLv3). The dependencies listed below require the same attribution/redistribution obligations. Refer to their upstream repositories for the authoritative texts.
 
 | Component | License | Notes / Source |
 |-----------|---------|----------------|
