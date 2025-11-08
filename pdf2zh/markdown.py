@@ -10,7 +10,7 @@ import re
 
 import pymupdf
 import pymupdf4llm
-PREFIX_CHARS = set("#>+-0123456789. \t")
+PREFIX_CHARS = set("#>+-*0123456789. \t•")
 WRAPPER_TOKENS = ("**", "__", "~~", "`", "_")
 
 
@@ -66,25 +66,16 @@ def export_markdown(
     )
 
     if reference_doc is not None:
-        reference_assets_dir: Optional[Path] = None
-        reference_image_path = image_path
-        if write_images:
-            reference_assets_dir = Path(tempfile.mkdtemp(prefix="pdf2zh-mdref-"))
-            reference_image_path = reference_assets_dir
-
         reference_markdown = pymupdf4llm.to_markdown(
             reference_doc,
             filename=safe_pdf_name,
-            write_images=write_images,
-            embed_images=embed_images,
-            image_path=str(reference_image_path),
+            write_images=False,
+            embed_images=False,
+            image_path="",
             pages=pages,
         )
 
         markdown_text = _merge_markdown(reference_markdown, markdown_text)
-
-        if reference_assets_dir is not None:
-            shutil.rmtree(reference_assets_dir, ignore_errors=True)
 
     if write_images and assets_rel and image_dir_token:
         markdown_text = markdown_text.replace(
@@ -101,6 +92,7 @@ def export_markdown(
 
 
 def _merge_markdown(reference_text: str, translated_text: str) -> str:
+    """Combine reference Markdown (with headings/styles) and translated Markdown line-by-line."""
     merged_lines: list[str] = []
     ref_lines = reference_text.splitlines()
     trans_lines = translated_text.splitlines()
@@ -115,8 +107,12 @@ def _merge_markdown(reference_text: str, translated_text: str) -> str:
         trans_line = trans_lines[trans_idx] if trans_idx < trans_len else ""
 
         stripped_ref = ref_line.strip()
+        stripped_trans = trans_line.strip()
+
         if stripped_ref.startswith("**==>") or stripped_ref.startswith("**Figure"):
+            merged_lines.append(trans_line)
             ref_idx += 1
+            trans_idx += 1 if trans_idx < trans_len else 0
             continue
 
         if ref_idx >= ref_len:
@@ -124,14 +120,12 @@ def _merge_markdown(reference_text: str, translated_text: str) -> str:
             trans_idx += 1
             continue
         if trans_idx >= trans_len:
-            merged_lines.append(ref_line)
-            ref_idx += 1
-            continue
+            break
 
         ref_blank = not stripped_ref
-        trans_blank = is_blank(trans_line)
+        trans_blank = not stripped_trans
         ref_header = stripped_ref.startswith("#")
-        trans_header = trans_line.lstrip().startswith("#")
+        trans_header = stripped_trans.startswith("#")
 
         if ref_blank and trans_blank:
             merged_lines.append(trans_line)
@@ -152,6 +146,7 @@ def _merge_markdown(reference_text: str, translated_text: str) -> str:
             continue
         if trans_header and not ref_header:
             merged_lines.append(trans_line)
+            ref_idx += 1
             trans_idx += 1
             continue
 
@@ -163,6 +158,7 @@ def _merge_markdown(reference_text: str, translated_text: str) -> str:
 
 
 def _merge_line(reference_line: str, translated_line: str) -> str:
+    """Merge a single line from reference/translated Markdown, preserving wrappers where appropriate."""
     if not reference_line:
         return translated_line
     if not translated_line:
@@ -173,17 +169,17 @@ def _merge_line(reference_line: str, translated_line: str) -> str:
         return translated_line
 
     ref_prefix, ref_body = _extract_prefix(reference_line)
-    ref_wrappers, _ = _extract_wrappers(ref_body.strip())
-
     trans_prefix, trans_body = _extract_prefix(translated_line)
+
     prefix = trans_prefix if trans_prefix.strip() else ""
     if not prefix:
         ref_prefix_clean = ref_prefix.strip()
         if ref_prefix_clean and not ref_prefix_clean.startswith("#"):
             prefix = ref_prefix
 
-    if prefix.strip().startswith("#"):
-        ref_wrappers = []
+    ref_wrappers = []
+    if not prefix.strip().startswith("#") and not ref_prefix.strip().startswith("#"):
+        ref_wrappers, _ = _extract_wrappers(ref_body.strip())
 
     core = trans_body
     leading_ws = len(core) - len(core.lstrip(" "))
@@ -192,7 +188,12 @@ def _merge_line(reference_line: str, translated_line: str) -> str:
 
     existing_wrappers, _ = _extract_wrappers(trans_body.strip())
 
-    if ref_wrappers and inner and not existing_wrappers:
+    if (
+        ref_wrappers
+        and inner
+        and not existing_wrappers
+        and not prefix.strip().startswith("#")
+    ):
         inner = _apply_wrappers(inner, ref_wrappers)
 
     rebuilt_core = (" " * leading_ws) + inner + (" " * trailing_ws)
@@ -247,6 +248,7 @@ def _rewrite_image_paths(markdown_text: str, assets_rel: Path | None) -> str:
 
 
 def _apply_reference_header(reference_line: str, translated_line: str) -> str:
+    """Apply the reference line's heading prefix to the translated line."""
     prefix, _ = _extract_prefix(reference_line)
     prefix = prefix.strip()
     if not prefix:
@@ -261,6 +263,7 @@ def _apply_reference_header(reference_line: str, translated_line: str) -> str:
 
 
 def _promote_primary_heading(markdown_text: str) -> str:
+    """Ensure the first sub-heading is promoted to a top-level # heading."""
     lines = markdown_text.splitlines()
     if any(line.lstrip().startswith("# ") for line in lines):
         return markdown_text
