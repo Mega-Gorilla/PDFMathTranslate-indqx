@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from itertools import zip_longest
 from pathlib import Path
 from typing import Optional
 
 import os
+import re
 
 import pymupdf
 import pymupdf4llm
@@ -93,6 +93,7 @@ def export_markdown(
             image_dir_token,
             assets_rel.as_posix(),
         )
+        markdown_text = _rewrite_image_paths(markdown_text, assets_rel)
 
     md_path = output_dir / f"{base_name}.md"
     md_path.write_text(markdown_text, encoding="utf-8")
@@ -100,12 +101,61 @@ def export_markdown(
 
 
 def _merge_markdown(reference_text: str, translated_text: str) -> str:
-    merged_lines = []
+    merged_lines: list[str] = []
     ref_lines = reference_text.splitlines()
     trans_lines = translated_text.splitlines()
+    ref_len, trans_len = len(ref_lines), len(trans_lines)
+    ref_idx = trans_idx = 0
 
-    for ref_line, trans_line in zip_longest(ref_lines, trans_lines, fillvalue=""):
+    def is_blank(value: str) -> bool:
+        return not value.strip()
+
+    while ref_idx < ref_len or trans_idx < trans_len:
+        ref_line = ref_lines[ref_idx] if ref_idx < ref_len else ""
+        trans_line = trans_lines[trans_idx] if trans_idx < trans_len else ""
+
+        stripped_ref = ref_line.strip()
+        if stripped_ref.startswith("**==>") or stripped_ref.startswith("**Figure"):
+            ref_idx += 1
+            continue
+
+        if ref_idx >= ref_len:
+            merged_lines.append(trans_line)
+            trans_idx += 1
+            continue
+        if trans_idx >= trans_len:
+            merged_lines.append(ref_line)
+            ref_idx += 1
+            continue
+
+        ref_blank = not stripped_ref
+        trans_blank = is_blank(trans_line)
+        ref_header = stripped_ref.startswith("#")
+        trans_header = trans_line.lstrip().startswith("#")
+
+        if ref_blank and trans_blank:
+            merged_lines.append(trans_line)
+            ref_idx += 1
+            trans_idx += 1
+            continue
+        if ref_blank:
+            ref_idx += 1
+            continue
+        if trans_blank:
+            merged_lines.append(trans_line)
+            trans_idx += 1
+            continue
+        if ref_header and not trans_header:
+            ref_idx += 1
+            continue
+        if trans_header and not ref_header:
+            merged_lines.append(trans_line)
+            trans_idx += 1
+            continue
+
         merged_lines.append(_merge_line(ref_line, trans_line))
+        ref_idx += 1
+        trans_idx += 1
 
     return "\n".join(merged_lines)
 
@@ -120,19 +170,28 @@ def _merge_line(reference_line: str, translated_line: str) -> str:
     if stripped_translated.startswith("![]"):
         return translated_line
 
-    prefix, remainder = _extract_prefix(reference_line)
-    wrappers, _ = _extract_wrappers(remainder.strip())
+    ref_prefix, ref_body = _extract_prefix(reference_line)
+    ref_wrappers, _ = _extract_wrappers(ref_body.strip())
 
-    core = translated_line
-    if prefix and core.startswith(prefix):
-        core = core[len(prefix) :]
+    trans_prefix, trans_body = _extract_prefix(translated_line)
+    prefix = trans_prefix if trans_prefix.strip() else ""
+    if not prefix:
+        ref_prefix_clean = ref_prefix.strip()
+        if ref_prefix_clean and not ref_prefix_clean.startswith("#"):
+            prefix = ref_prefix
 
+    if prefix.strip().startswith("#"):
+        ref_wrappers = []
+
+    core = trans_body
     leading_ws = len(core) - len(core.lstrip(" "))
     trailing_ws = len(core.rstrip(" ")) - len(core.strip(" "))
     inner = core.strip()
 
-    if wrappers and inner:
-        inner = _apply_wrappers(inner, wrappers)
+    existing_wrappers, _ = _extract_wrappers(trans_body.strip())
+
+    if ref_wrappers and inner and not existing_wrappers:
+        inner = _apply_wrappers(inner, ref_wrappers)
 
     rebuilt_core = (" " * leading_ws) + inner + (" " * trailing_ws)
     return prefix + rebuilt_core
@@ -165,3 +224,21 @@ def _apply_wrappers(content: str, wrappers: list[str]) -> str:
     for token in reversed(wrappers):
         result = f"{token}{result}{token}"
     return result
+
+
+def _rewrite_image_paths(markdown_text: str, assets_rel: Path | None) -> str:
+    if not assets_rel:
+        return markdown_text
+
+    rel_prefix = assets_rel.as_posix()
+
+    def replace(match: re.Match) -> str:
+        original = match.group(1)
+        if original.startswith(rel_prefix):
+            return match.group(0)
+        basename = os.path.basename(original)
+        if not basename:
+            return match.group(0)
+        return f"![]({rel_prefix}/{basename})"
+
+    return re.sub(r"!\[]\(([^)]+)\)", replace, markdown_text)
