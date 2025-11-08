@@ -42,7 +42,7 @@ English | [简体中文](docs/README_zh-CN.md) | [繁體中文](docs/README_zh-T
   <!-- Licenses -->
   <a href="./LICENSE">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="AGPL-3.0 License"></a>
-  <a href="./THIRD_PARTY_LICENSES.md">
+  <a href="./THIRD_PARTY_NOTICES.md">
     <img src="https://img.shields.io/badge/Third%20Party-Licenses-brightgreen.svg" alt="Third-party notices"></a>
 </p>
 
@@ -376,7 +376,7 @@ This work has been accepted by the *Proceedings of the 2025 Conference on Empiri
 <h3 id="license">5.3 License & Notices</h3>
 
 - This fork is distributed under the [GNU Affero General Public License v3.0](./LICENSE).
-- Dual-licensed dependencies such as PyMuPDF / pymupdf4llm, along with other bundled libraries, are listed in [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for easy attribution when redistributing binaries or Docker images.
+- Dual-licensed dependencies such as PyMuPDF / pymupdf4llm, along with other bundled libraries, are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for easy attribution when redistributing binaries or Docker images.
 
 <h3 id="contrib">5.4 Contributors</h3>
 
