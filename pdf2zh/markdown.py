@@ -20,10 +20,14 @@ PLACEHOLDER_PATTERNS = (
 )
 
 
-FOOTNOTE_INLINE = "inline"
-FOOTNOTE_APPEND = "append"
-FOOTNOTE_DROP = "drop"
-FOOTNOTE_MODES = {FOOTNOTE_INLINE, FOOTNOTE_APPEND, FOOTNOTE_DROP}
+FOOTNOTE_KEEP_INLINE = "keep-inline"
+FOOTNOTE_MOVE_TO_END = "move-to-end"
+FOOTNOTE_REMOVE = "remove"
+FOOTNOTE_MODES = {
+    FOOTNOTE_KEEP_INLINE,
+    FOOTNOTE_MOVE_TO_END,
+    FOOTNOTE_REMOVE,
+}
 
 
 @dataclass
@@ -55,7 +59,7 @@ def _render_markdown_document(
         pages=pages,
     )
     collected: list[_FootnoteEntry] = []
-    if footnote_mode != FOOTNOTE_INLINE:
+    if footnote_mode != FOOTNOTE_KEEP_INLINE:
         collected = _extract_structural_footnotes(
             parsed_doc,
             footnote_mode,
@@ -63,7 +67,7 @@ def _render_markdown_document(
         )
     markdown_text = parsed_doc.to_markdown(
         header=True,
-        footer=(footnote_mode == FOOTNOTE_INLINE),
+        footer=(footnote_mode == FOOTNOTE_KEEP_INLINE),
         write_images=write_images,
         embed_images=embed_images,
     )
@@ -83,7 +87,7 @@ def _extract_structural_footnotes(
         for box in boxes:
             kind = getattr(box, "boxclass", "")
             if kind in {"footnote", "page-footer"}:
-                if capture and mode == FOOTNOTE_APPEND:
+                if capture and mode == FOOTNOTE_MOVE_TO_END:
                     markdown = _box_to_markdown(kind, box)
                     if markdown.strip():
                         collected.append(
@@ -130,7 +134,7 @@ def export_markdown(
     write_images: bool = True,
     embed_images: bool = False,
     pages: Optional[list[int]] = None,
-    markdown_footnotes: str = FOOTNOTE_APPEND,
+    markdown_footnotes: str = FOOTNOTE_MOVE_TO_END,
 ) -> Path:
     """
     Render the provided PyMuPDF document into Markdown via pymupdf4llm.
@@ -142,7 +146,7 @@ def export_markdown(
         write_images: Whether to dump extracted images to disk.
         embed_images: Whether to embed images via data URIs instead of files.
         pages: Optional list of 0-based page indices to include.
-        markdown_footnotes: Controls footnote placement: "inline", "append", or "drop".
+        markdown_footnotes: Controls footnote placement: "keep-inline", "move-to-end", or "remove".
     """
 
     if write_images and embed_images:
@@ -198,7 +202,7 @@ def export_markdown(
 
     markdown_text = _promote_primary_heading(markdown_text)
 
-    if markdown_footnotes == FOOTNOTE_APPEND and collected:
+    if markdown_footnotes == FOOTNOTE_MOVE_TO_END and collected:
         markdown_text = markdown_text.rstrip() + "\n\n" + _format_footnote_section(collected)
 
     md_path = output_dir / f"{base_name}.md"

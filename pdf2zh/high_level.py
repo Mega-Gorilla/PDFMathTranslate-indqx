@@ -25,7 +25,7 @@ from pymupdf import Document, Font
 from pdf2zh.converter import TranslateConverter
 from pdf2zh.doclayout import OnnxModel
 from pdf2zh.pdfinterp import PDFPageInterpreterEx
-from pdf2zh.markdown import export_markdown, FOOTNOTE_APPEND
+from pdf2zh.markdown import export_markdown, FOOTNOTE_MOVE_TO_END
 
 from pdf2zh.config import ConfigManager
 from babeldoc.assets.assets import get_font_and_metadata
@@ -319,7 +319,7 @@ def translate(
     skip_subset_fonts: bool = False,
     ignore_cache: bool = False,
     output_format: str = "pdf",
-    markdown_footnotes: str = FOOTNOTE_APPEND,
+    markdown_footnotes: str = FOOTNOTE_MOVE_TO_END,
     **kwarg: Any,
 ):
     if not files:

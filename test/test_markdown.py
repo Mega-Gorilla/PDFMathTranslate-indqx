@@ -62,7 +62,7 @@ def test_export_markdown_append_mode(tmp_path, monkeypatch):
     assert "note" in content
 
 
-def test_export_markdown_drop_mode(tmp_path, monkeypatch):
+def test_export_markdown_remove_mode(tmp_path, monkeypatch):
     source_pdf = SOURCE_PDF
 
     def fake_render(doc, **kwargs):
@@ -88,7 +88,7 @@ def test_export_markdown_drop_mode(tmp_path, monkeypatch):
             doc,
             tmp_path,
             "drop-mode",
-            markdown_footnotes="drop",
+            markdown_footnotes="remove",
             write_images=False,
         )
     finally:
@@ -99,7 +99,7 @@ def test_export_markdown_drop_mode(tmp_path, monkeypatch):
     assert "Permission to make digital copies" not in content
 
 
-def test_export_markdown_inline_mode(tmp_path, monkeypatch):
+def test_export_markdown_keep_inline_mode(tmp_path, monkeypatch):
     source_pdf = SOURCE_PDF
 
     inline_marker = "Permission to make digital or hard copies"
@@ -121,7 +121,7 @@ def test_export_markdown_inline_mode(tmp_path, monkeypatch):
             doc,
             tmp_path,
             "inline-mode",
-            markdown_footnotes="inline",
+            markdown_footnotes="keep-inline",
             write_images=False,
         )
     finally:

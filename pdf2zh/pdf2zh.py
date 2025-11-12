@@ -107,9 +107,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parse_params.add_argument(
         "--markdown-footnotes",
-        choices=["inline", "append", "drop"],
-        default="append",
-        help="Control how footnotes/page footers appear in Markdown output.",
+        choices=["keep-inline", "move-to-end", "remove"],
+        default="move-to-end",
+        help="Control how Markdown footnotes/page footers are handled.",
     )
     parse_params.add_argument(
         "--no-translate",
