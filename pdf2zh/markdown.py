@@ -28,6 +28,22 @@ FOOTNOTE_MODES = {
     FOOTNOTE_MOVE_TO_END,
     FOOTNOTE_REMOVE,
 }
+FOOTNOTE_LEGACY_ALIASES = {
+    "inline": FOOTNOTE_KEEP_INLINE,
+    "append": FOOTNOTE_MOVE_TO_END,
+    "drop": FOOTNOTE_REMOVE,
+}
+
+
+def _normalize_footnote_mode(value: Optional[str]) -> str:
+    """Map user-provided footnote flag to canonical token."""
+    if value is None:
+        return FOOTNOTE_MOVE_TO_END
+    token = str(value).strip().lower()
+    canonical = FOOTNOTE_LEGACY_ALIASES.get(token, token)
+    if canonical not in FOOTNOTE_MODES:
+        raise ValueError(f"Invalid markdown footnote mode '{value}'.")
+    return canonical
 
 
 @dataclass
@@ -48,10 +64,7 @@ def _render_markdown_document(
     footnote_mode: str,
     collect_footnotes: bool,
 ):
-    if footnote_mode not in FOOTNOTE_MODES:
-        raise ValueError(
-            f"Invalid markdown footnote mode '{footnote_mode}'."
-        )
+    footnote_mode = _normalize_footnote_mode(footnote_mode)
     parsed_doc = parse_document(
         doc,
         filename=filename,
@@ -63,8 +76,8 @@ def _render_markdown_document(
         collected = _extract_structural_footnotes(
             parsed_doc,
             footnote_mode,
-            collect_footnotes,
-        )
+        collect_footnotes,
+    )
     markdown_text = parsed_doc.to_markdown(
         header=True,
         footer=(footnote_mode == FOOTNOTE_KEEP_INLINE),
@@ -148,6 +161,8 @@ def export_markdown(
         pages: Optional list of 0-based page indices to include.
         markdown_footnotes: Controls footnote placement: "keep-inline", "move-to-end", or "remove".
     """
+
+    markdown_footnotes = _normalize_footnote_mode(markdown_footnotes)
 
     if write_images and embed_images:
         raise ValueError("write_images and embed_images cannot both be True")
