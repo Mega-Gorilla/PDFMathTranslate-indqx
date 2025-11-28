@@ -510,6 +510,32 @@ class TranslateConverter(PDFConverterEx):
         def gen_op_line(x, y, xlen, ylen, linewidth):
             return f"ET q 1 0 0 1 {x:f} {y:f} cm [] 0 d 0 J {linewidth:f} w 0 0 m {xlen:f} {ylen:f} l S Q BT "
 
+        def _estimate_text_width(text: str, font_size: float) -> float:
+            """Estimate the width of text when rendered with the noto font."""
+            width = 0.0
+            ptr = 0
+            while ptr < len(text):
+                # Skip formula markers {v...}
+                vy_match = re.match(r"\{\s*v([\d\s]+)\}", text[ptr:], re.IGNORECASE)
+                if vy_match:
+                    try:
+                        vid = int(vy_match.group(1).replace(" ", ""))
+                        if vid < len(vlen):
+                            width += vlen[vid]
+                    except Exception:
+                        pass
+                    ptr += len(vy_match.group(0))
+                    continue
+                ch = text[ptr]
+                if ch not in (" ", "\n"):
+                    # Use noto font for width calculation
+                    width += self.noto.char_lengths(ch, font_size)[0]
+                elif ch == " ":
+                    # Space width
+                    width += self.noto.char_lengths(" ", font_size)[0]
+                ptr += 1
+            return width
+
         for id, new in enumerate(news):
             x: float = pstk[id].x                       # 段落の初期 X
             y: float = pstk[id].y                       # 段落の初期 Y
@@ -518,6 +544,30 @@ class TranslateConverter(PDFConverterEx):
             height: float = pstk[id].y1 - pstk[id].y0   # 高さ
             size: float = pstk[id].size                 # フォントサイズ
             brk: bool = pstk[id].brk                    # 改行フラグ
+
+            # Scale font size if text doesn't fit within available width
+            # For non-wrapping paragraphs (brk=False), scale to fit on one line
+            # For wrapping paragraphs (brk=True), scale if even with wrapping it would overflow
+            if new.strip():
+                available_width = x1 - x0
+                if available_width > 0:
+                    estimated_width = _estimate_text_width(new, size)
+                    if not brk and estimated_width > available_width:
+                        # Non-wrapping: scale to fit on single line
+                        scale_factor = available_width / estimated_width
+                        scale_factor = max(scale_factor, 0.5)
+                        size = size * scale_factor
+                        log.debug(f"Scaling font (no-wrap): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
+                    elif brk and estimated_width > available_width * 1.5:
+                        # Wrapping: scale if significantly overflowing (allow some overflow for wrapping)
+                        # Calculate how many lines we'd need
+                        num_lines = estimated_width / available_width
+                        max_lines = height / (size * default_line_height) if size > 0 else 1
+                        if num_lines > max_lines and max_lines > 0:
+                            scale_factor = max_lines / num_lines
+                            scale_factor = max(scale_factor, 0.5)
+                            size = size * scale_factor
+                            log.debug(f"Scaling font (wrap): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
 
             if getattr(pstk[id], "vertical", False):
                 direction = pstk[id].vertical_direction or -1
