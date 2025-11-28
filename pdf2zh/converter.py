@@ -400,8 +400,8 @@ class TranslateConverter(PDFConverterEx):
                     if cls == xt_cls:               # 同じ段落
                         if child.x0 > xt.x1 + 1:    # 行内スペースを挿入
                             sstk[-1] += " "
-                        elif child.x1 < xt.x0:      # 折り返しが生じた場合は空白を入れて改行フラグを立てる
-                            sstk[-1] += " "
+                        elif child.x1 < xt.x0:      # 折り返しが生じた場合は改行を入れて改行フラグを立てる
+                            sstk[-1] += "\n"
                             pstk[-1].brk = True
                     else:                           # 新しい段落を作成
                         sstk.append("")
@@ -540,7 +540,8 @@ class TranslateConverter(PDFConverterEx):
             """Get the width of the longest non-breaking token in text.
 
             A token is a sequence of characters that should not be broken across lines.
-            This includes words, email addresses, URLs, and CJK characters.
+            For CJK text, each character is breakable so we only track non-CJK sequences
+            (like email addresses, URLs, ASCII words) as tokens.
             """
             max_width = 0.0
             current_width = 0.0
@@ -562,8 +563,14 @@ class TranslateConverter(PDFConverterEx):
                     # Token boundary - save max and reset
                     max_width = max(max_width, current_width)
                     current_width = 0.0
+                elif ord(ch) >= 0x3000:
+                    # CJK character - breakable after it, so save current token and add this char
+                    max_width = max(max_width, current_width)
+                    char_width = self.noto.char_lengths(ch, font_size)[0]
+                    max_width = max(max_width, char_width)  # Single CJK char as its own token
+                    current_width = 0.0  # Reset for next token
                 else:
-                    # Add character width to current token
+                    # Non-CJK character (ASCII, etc.) - add to current token
                     current_width += self.noto.char_lengths(ch, font_size)[0]
                 ptr += 1
             # Don't forget the last token
@@ -691,6 +698,24 @@ class TranslateConverter(PDFConverterEx):
                         mod = var[vid][-1].width
                 else:  # 加载文字
                     ch = new[ptr]
+                    # Handle explicit newline character - force line break
+                    if ch == "\n":
+                        if cstk and fcur is not None:  # Flush current text buffer before line break
+                            ops_vals.append({
+                                "type": OpType.TEXT,
+                                "font": fcur,
+                                "size": size,
+                                "x": tx,
+                                "dy": 0,
+                                "rtxt": raw_string(fcur, cstk),
+                                "lidx": lidx
+                            })
+                            cstk = ""
+                        if brk:  # Only break if paragraph allows wrapping
+                            x = x0
+                            lidx += 1
+                        ptr += 1
+                        continue
                     fcur_ = None
                     try:
                         if fcur_ is None and self.fontmap["tiro"].to_unichr(ord(ch)) == ch:
