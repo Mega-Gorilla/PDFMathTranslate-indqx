@@ -8,7 +8,7 @@ from pdf2zh.markdown import export_markdown, _FootnoteEntry
 SOURCE_PDF = Path("test/file/translate.cli.plain.text.pdf")
 
 
-def test_export_markdown_append_mode(tmp_path, monkeypatch):
+def test_export_markdown_keep_mode(tmp_path, monkeypatch):
     source_pdf = SOURCE_PDF
 
     call_state = {"count": 0}
@@ -62,7 +62,7 @@ def test_export_markdown_append_mode(tmp_path, monkeypatch):
     assert "note" in content
 
 
-def test_export_markdown_remove_mode(tmp_path, monkeypatch):
+def test_export_markdown_drop_mode(tmp_path, monkeypatch):
     source_pdf = SOURCE_PDF
 
     def fake_render(doc, **kwargs):
@@ -88,7 +88,7 @@ def test_export_markdown_remove_mode(tmp_path, monkeypatch):
             doc,
             tmp_path,
             "drop-mode",
-            markdown_footnotes="remove",
+            markdown_footnotes="drop",
             write_images=False,
         )
     finally:

@@ -107,10 +107,10 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parse_params.add_argument(
         "--markdown-footnotes",
-        choices=["move-to-end", "remove"],
-        default="move-to-end",
+        choices=["keep", "drop"],
+        default="keep",
         help="Control how Markdown footnotes/page footers are handled: "
-        "move-to-end (collect at document end) or remove (discard).",
+        "keep (collect at document end) or drop (discard).",
     )
     parse_params.add_argument(
         "--no-translate",

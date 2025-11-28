@@ -23,18 +23,18 @@ PLACEHOLDER_PATTERNS = (
 )
 
 
-FOOTNOTE_MOVE_TO_END = "move-to-end"
-FOOTNOTE_REMOVE = "remove"
+FOOTNOTE_KEEP = "keep"
+FOOTNOTE_DROP = "drop"
 FOOTNOTE_MODES = {
-    FOOTNOTE_MOVE_TO_END,
-    FOOTNOTE_REMOVE,
+    FOOTNOTE_KEEP,
+    FOOTNOTE_DROP,
 }
 
 
 def _normalize_footnote_mode(value: Optional[str]) -> str:
     """Map user-provided footnote flag to canonical token."""
     if value is None:
-        return FOOTNOTE_MOVE_TO_END
+        return FOOTNOTE_KEEP
     token = str(value).strip().lower()
     if token not in FOOTNOTE_MODES:
         raise ValueError(f"Invalid markdown footnote mode '{value}'.")
@@ -95,7 +95,7 @@ def _extract_structural_footnotes(
             kind = getattr(box, "boxclass", "")
             if kind in {"footnote", "page-footer"}:
                 removed_count += 1
-                if capture and mode == FOOTNOTE_MOVE_TO_END:
+                if capture and mode == FOOTNOTE_KEEP:
                     markdown = _box_to_markdown(kind, box)
                     if markdown.strip():
                         collected.append(
@@ -109,7 +109,7 @@ def _extract_structural_footnotes(
             filtered.append(box)
         page.boxes = filtered
     if removed_count > 0:
-        action = "moved to end" if mode == FOOTNOTE_MOVE_TO_END else "removed"
+        action = "kept (end)" if mode == FOOTNOTE_KEEP else "dropped"
         log.info(f"Markdown footnotes: {removed_count} footnote(s) {action}")
     return collected
 
@@ -145,7 +145,7 @@ def export_markdown(
     write_images: bool = True,
     embed_images: bool = False,
     pages: Optional[list[int]] = None,
-    markdown_footnotes: str = FOOTNOTE_MOVE_TO_END,
+    markdown_footnotes: str = FOOTNOTE_KEEP,
 ) -> Path:
     """
     Render the provided PyMuPDF document into Markdown via pymupdf4llm.
@@ -157,7 +157,7 @@ def export_markdown(
         write_images: Whether to dump extracted images to disk.
         embed_images: Whether to embed images via data URIs instead of files.
         pages: Optional list of 0-based page indices to include.
-        markdown_footnotes: Controls footnote placement: "move-to-end" (default) or "remove".
+        markdown_footnotes: Controls footnote placement: "keep" (default) or "drop".
     """
 
     markdown_footnotes = _normalize_footnote_mode(markdown_footnotes)
@@ -215,7 +215,7 @@ def export_markdown(
 
     markdown_text = _promote_primary_heading(markdown_text)
 
-    if markdown_footnotes == FOOTNOTE_MOVE_TO_END and collected:
+    if markdown_footnotes == FOOTNOTE_KEEP and collected:
         markdown_text = markdown_text.rstrip() + "\n\n" + _format_footnote_section(collected)
 
     md_path = output_dir / f"{base_name}.md"
