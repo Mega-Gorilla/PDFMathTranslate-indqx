@@ -536,6 +536,49 @@ class TranslateConverter(PDFConverterEx):
                 ptr += 1
             return width
 
+        def _get_max_token_width(text: str, font_size: float) -> float:
+            """Get the width of the longest non-breaking token in text.
+
+            A token is a sequence of characters that should not be broken across lines.
+            This includes words, email addresses, URLs, and CJK characters.
+            """
+            max_width = 0.0
+            current_width = 0.0
+            ptr = 0
+            while ptr < len(text):
+                # Skip formula markers {v...}
+                vy_match = re.match(r"\{\s*v([\d\s]+)\}", text[ptr:], re.IGNORECASE)
+                if vy_match:
+                    try:
+                        vid = int(vy_match.group(1).replace(" ", ""))
+                        if vid < len(vlen):
+                            current_width += vlen[vid]
+                    except Exception:
+                        pass
+                    ptr += len(vy_match.group(0))
+                    continue
+                ch = text[ptr]
+                if ch in (" ", "\n"):
+                    # Token boundary - save max and reset
+                    max_width = max(max_width, current_width)
+                    current_width = 0.0
+                else:
+                    # Add character width to current token
+                    current_width += self.noto.char_lengths(ch, font_size)[0]
+                ptr += 1
+            # Don't forget the last token
+            max_width = max(max_width, current_width)
+            return max_width
+
+        def _is_breakable_char(ch: str) -> bool:
+            """Check if line can be broken after this character."""
+            if ch in (" ", "\n", "\t"):
+                return True
+            # CJK characters can break after them
+            if ord(ch) >= 0x3000:
+                return True
+            return False
+
         for id, new in enumerate(news):
             x: float = pstk[id].x                       # 段落の初期 X
             y: float = pstk[id].y                       # 段落の初期 Y
@@ -546,28 +589,40 @@ class TranslateConverter(PDFConverterEx):
             brk: bool = pstk[id].brk                    # 改行フラグ
 
             # Scale font size if text doesn't fit within available width
-            # For non-wrapping paragraphs (brk=False), scale to fit on one line
-            # For wrapping paragraphs (brk=True), scale if even with wrapping it would overflow
+            # Strategy:
+            # 1. For non-wrapping paragraphs (brk=False): scale to fit on single line
+            # 2. For wrapping paragraphs (brk=True): ensure longest token fits on one line
+            #    to prevent mid-word line breaks that cause spacing issues in markdown
             if new.strip():
                 available_width = x1 - x0
                 if available_width > 0:
-                    estimated_width = _estimate_text_width(new, size)
-                    if not brk and estimated_width > available_width:
-                        # Non-wrapping: scale to fit on single line
-                        scale_factor = available_width / estimated_width
-                        scale_factor = max(scale_factor, 0.5)
-                        size = size * scale_factor
-                        log.debug(f"Scaling font (no-wrap): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
-                    elif brk and estimated_width > available_width * 1.5:
-                        # Wrapping: scale if significantly overflowing (allow some overflow for wrapping)
-                        # Calculate how many lines we'd need
-                        num_lines = estimated_width / available_width
-                        max_lines = height / (size * default_line_height) if size > 0 else 1
-                        if num_lines > max_lines and max_lines > 0:
-                            scale_factor = max_lines / num_lines
+                    if not brk:
+                        # Non-wrapping: scale entire text to fit on single line
+                        estimated_width = _estimate_text_width(new, size)
+                        if estimated_width > available_width:
+                            scale_factor = available_width / estimated_width
                             scale_factor = max(scale_factor, 0.5)
                             size = size * scale_factor
-                            log.debug(f"Scaling font (wrap): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
+                            log.debug(f"Scaling font (no-wrap): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
+                    else:
+                        # Wrapping: ensure longest token fits to prevent mid-token breaks
+                        max_token_width = _get_max_token_width(new, size)
+                        if max_token_width > available_width:
+                            # Scale so longest token fits on one line
+                            scale_factor = available_width / max_token_width
+                            scale_factor = max(scale_factor, 0.5)
+                            size = size * scale_factor
+                            log.debug(f"Scaling font (token-fit): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
+                        else:
+                            # Check if total content fits within available height
+                            estimated_width = _estimate_text_width(new, size)
+                            num_lines = estimated_width / available_width
+                            max_lines = height / (size * default_line_height) if size > 0 else 1
+                            if num_lines > max_lines and max_lines > 0:
+                                scale_factor = max_lines / num_lines
+                                scale_factor = max(scale_factor, 0.5)
+                                size = size * scale_factor
+                                log.debug(f"Scaling font (height-fit): {pstk[id].size:.1f} -> {size:.1f} (factor={scale_factor:.2f})")
 
             if getattr(pstk[id], "vertical", False):
                 direction = pstk[id].vertical_direction or -1
@@ -666,8 +721,12 @@ class TranslateConverter(PDFConverterEx):
                         })
                         cstk = ""
                 if brk and x + adv > x1 + 0.1 * size:  # 原文段落に改行があり右端へ到達した場合
-                    x = x0
-                    lidx += 1
+                    # Only break at breakable positions to prevent mid-word breaks
+                    # Font scaling should ensure tokens fit, but this is a safety check
+                    if vy_regex or _is_breakable_char(ch):
+                        x = x0
+                        lidx += 1
+                    # If not breakable, continue on same line (font scaling should handle this)
                 if vy_regex:  # 数式を挿入
                     fix = 0
                     if fcur is not None:  # 段落内での縦位置補正
